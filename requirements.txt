@@ -18,6 +18,7 @@ redis==5.0.3
 
 # Machine Learning / NLP avec TensorFlow
 tensorflow==2.16.1
+protobuf>=4.23.0
 
 # Interface CLI riche
 prompt_toolkit==3.0.43

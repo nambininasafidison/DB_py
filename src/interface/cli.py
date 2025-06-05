@@ -36,7 +36,7 @@ def get_suggestions(db_system):
         if db_obf:
             metadata_path = os.path.join(CONFIG["DATA_DIR"], db_obf, ".metadata.msgpack")
             metadata = read_msgpack(metadata_path, db_system.metadata_key)
-            if metadata:  # Vérifier si les métadonnées existent
+            if metadata:
                 tables = list(metadata.get("tables", {}).keys())
                 suggestions.extend([f"SELECT * FROM {table}" for table in tables])
                 suggestions.extend([f"INSERT INTO {table}" for table in tables])
@@ -55,32 +55,6 @@ def user_prompt(user, db_system):
     session = PromptSession(history=history, style=box_style)
 
     version = "1.2.1"
-    prompt_message = [
-        ("class:border", "┏"), 
-        ("class:border", "━" * 60), 
-        ("class:border", "┓\n"),
-        ("class:border", "┃ "),
-        ("class:title", "λ Database Pro "),
-        ("class:version", f"[Version {version}] (lang='{db_system.language}')"),
-        ("class:border"," " * 17),
-        ("class:border", "┃\n"),
-        ("class:border", "┣"), 
-        ("class:separator", "┅" * 60), 
-        ("class:border", "┫\n"),
-        ("class:border", "┃ "),
-        ("class:icon", "➤"),
-        ("class:border", " "),
-        ("class:input", LANGUAGES[db_system.language]["command_title"]),
-        ("class:border"," " * 44),
-        ("class:border", "┃\n"),
-        ("class:border", "┃ "),
-        ("class:icon", "➜"),
-        ("class:border", " "),
-        ("class:database", user['username']),
-        ("class:border", "@"),
-        ("class:database", db_system.current_database or LANGUAGES[db_system.language]["none"]),
-        ("class:border", " $ "),
-    ]
 
     while True:
         try:
@@ -91,7 +65,7 @@ def user_prompt(user, db_system):
                     sentence=True
                 )
                 query = session.prompt(
-                    prompt_message,
+                    prompt_message(db_system.language, db_system.current_database, user['username'], version, db_system),
                     completer=completer,
                     complete_while_typing=True,
                     bottom_toolbar=HTML(
@@ -112,20 +86,32 @@ def user_prompt(user, db_system):
         except Exception as e:
             print_error(f"Erreur: {str(e)} (code: {e.__class__.__name__})")
 
-def execute_query(query, db_system, user):
-    """
-    Execute a query and handle the result.
-    """
-    try:
-        query = query.strip()  # Remove the `.upper()` to preserve case sensitivity
-        if query.lower().startswith("select"):
-            table_name = query.split("from")[1].strip().split()[0]
-            results = db_system.query(table_name, user=user)
-            if results:
-                print_formatted_text(HTML(f"<b>Résultats :</b> {results}"))
-            else:
-                print_formatted_text(HTML("<b>Aucun résultat trouvé.</b>"))
-        else:
-            print_error(LANGUAGES[db_system.language]["command_not_supported"])
-    except Exception as e:
-        print_error(f"Erreur lors de l'exécution de la requête : {str(e)}")
+def prompt_message(lang, db, user, version, db_system):
+    if lang not in LANGUAGES:
+        lang = "en"
+    return [
+        ("class:border", "┏"), 
+        ("class:border", "━" * 60), 
+        ("class:border", "┓\n"),
+        ("class:border", "┃ "),
+        ("class:title", "λ Database Pro "),
+        ("class:version", f"[Version {version}] (lang='{lang}')"),
+        ("class:border"," " * 17),
+        ("class:border", "┃\n"),
+        ("class:border", "┣"), 
+        ("class:separator", "┅" * 60), 
+        ("class:border", "┫\n"),
+        ("class:border", "┃ "),
+        ("class:icon", "➤"),
+        ("class:border", " "),
+        ("class:input", LANGUAGES[db_system.language]["command_title"]),
+        ("class:border"," " * 44),
+        ("class:border", "┃\n"),
+        ("class:border", "┃ "),
+        ("class:icon", "➜"),
+        ("class:border", " "),
+        ("class:database", user),
+        ("class:border", "@"),
+        ("class:database", db or LANGUAGES[db_system.language]["none"]),
+        ("class:border", " $ "),
+    ]

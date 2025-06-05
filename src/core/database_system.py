@@ -14,6 +14,7 @@ from datetime import datetime
 import re
 import msgpack
 import json
+from src.core.procedures import ProcedureManager
 
 class DatabaseSystem:
     def __init__(self, key, metadata_key, replicator, cache, user_manager, language=None):
@@ -29,6 +30,7 @@ class DatabaseSystem:
         self.language = language
         self.logger = self._setup_logger()
         self.backup_manager = BackupManager(self)
+        self.procedure_manager = ProcedureManager(os.path.join(conf.CONFIG["DATA_DIR"], "procedures"))
 
     def _setup_logger(self):
         logger = logging.getLogger("audit")
@@ -145,6 +147,52 @@ class DatabaseSystem:
                 print_error(LANGUAGES[self.language]["table_not_found"])
                 return
             table_data = read_msgpack(table_path, self.metadata_key)
+            constraints = table_data.get("constraints", {})
+            # NOT NULL
+            for col in constraints.get("not_null", []):
+                if col not in record or record[col] is None:
+                    print_error(LANGUAGES[self.language]["not_null_violation"].format(col=col))
+                    return
+            # UNIQUE
+            for col in constraints.get("unique_keys", []):
+                for row in table_data["rows"]:
+                    if row.get(col) == record.get(col):
+                        print_error(LANGUAGES[self.language]["unique_violation"].format(val=record.get(col), col=col))
+                        return
+            # PRIMARY KEY
+            for col in constraints.get("primary_keys", []):
+                for row in table_data["rows"]:
+                    if row.get(col) == record.get(col):
+                        print_error(LANGUAGES[self.language]["primary_key_duplicate"].format(col=col, val=record.get(col)))
+                        return
+            # FOREIGN KEY
+            for fk in constraints.get("foreign_keys", {}).values():
+                ref_table = fk["ref_table"]
+                ref_cols = fk["ref_columns"]
+                fk_cols = fk["columns"]
+                ref_path = self._get_table_path(ref_table)
+                if not ref_path:
+                    print_error(LANGUAGES[self.language]["table_not_found"])
+                    return
+                ref_data = read_msgpack(ref_path, self.metadata_key)
+                found = False
+                for ref_row in ref_data["rows"]:
+                    if all(record.get(fk_col) == ref_row.get(ref_col) for fk_col, ref_col in zip(fk_cols, ref_cols)):
+                        found = True
+                        break
+                if not found:
+                    print_error(LANGUAGES[self.language]["foreign_key_violation"].format(col=','.join(fk_cols), val=','.join(str(record.get(fk_col)) for fk_col in fk_cols), ref_table=ref_table, ref_col=','.join(ref_cols)))
+                    return
+            # CHECK
+            for check in constraints.get("checks", []):
+                check_name, check_condition = check
+                try:
+                    if not eval(check_condition, {}, record):
+                        print_error(LANGUAGES[self.language]["check_violation"].format(col=check_name, condition=check_condition))
+                        return
+                except Exception as e:
+                    print_error(f"Erreur d'évaluation CHECK: {str(e)}")
+                    return
             table_data["rows"].append(record)
             write_msgpack(table_path, table_data, self.metadata_key)
             self.logger.info(f"User: {user['username']} - Inserted record into {table_name}: {record}")
@@ -169,9 +217,57 @@ class DatabaseSystem:
         if set_col not in table_data["columns"]:
             print_error(LANGUAGES[self.language]["column_invalid"])
             return
+        constraints = table_data.get("constraints", {})
         updated = False
         for row in table_data["rows"]:
             if all(row.get(k) == v for k, v in conditions.items()):
+                # NOT NULL
+                if set_val is None and set_col in constraints.get("not_null", []):
+                    print_error(LANGUAGES[self.language]["not_null_violation"].format(col=set_col))
+                    return
+                # UNIQUE
+                if set_col in constraints.get("unique_keys", []):
+                    for other in table_data["rows"]:
+                        if other is not row and other.get(set_col) == set_val:
+                            print_error(LANGUAGES[self.language]["unique_violation"].format(val=set_val, col=set_col))
+                            return
+                # PRIMARY KEY
+                if set_col in constraints.get("primary_keys", []):
+                    for other in table_data["rows"]:
+                        if other is not row and other.get(set_col) == set_val:
+                            print_error(LANGUAGES[self.language]["primary_key_duplicate"].format(col=set_col, val=set_val))
+                            return
+                # FOREIGN KEY
+                for fk in constraints.get("foreign_keys", {}).values():
+                    if set_col in fk["columns"]:
+                        ref_table = fk["ref_table"]
+                        ref_cols = fk["ref_columns"]
+                        fk_cols = fk["columns"]
+                        ref_path = self._get_table_path(ref_table)
+                        if not ref_path:
+                            print_error(LANGUAGES[self.language]["table_not_found"])
+                            return
+                        ref_data = read_msgpack(ref_path, self.metadata_key)
+                        found = False
+                        for ref_row in ref_data["rows"]:
+                            if all((set_val if fk_col == set_col else row.get(fk_col)) == ref_row.get(ref_col) for fk_col, ref_col in zip(fk_cols, ref_cols)):
+                                found = True
+                                break
+                        if not found:
+                            print_error(LANGUAGES[self.language]["foreign_key_violation"].format(col=set_col, val=set_val, ref_table=ref_table, ref_col=','.join(ref_cols)))
+                            return
+                # CHECK
+                for check in constraints.get("checks", []):
+                    check_name, check_condition = check
+                    temp_row = row.copy()
+                    temp_row[set_col] = set_val
+                    try:
+                        if not eval(check_condition, {}, temp_row):
+                            print_error(LANGUAGES[self.language]["check_violation"].format(col=check_name, condition=check_condition))
+                            return
+                    except Exception as e:
+                        print_error(f"Erreur d'évaluation CHECK: {str(e)}")
+                        return
                 row[set_col] = set_val
                 updated = True
         if updated:
@@ -725,3 +821,24 @@ class DatabaseSystem:
         except Exception as e:
             print_error(f"Erreur : La requête a échoué. {str(e)}")
             return []
+
+    def create_procedure(self, name, code, user, is_function=False):
+        if user["role"] != "admin":
+            print_error(LANGUAGES[self.language]["permission_denied"])
+            return
+        self.procedure_manager.save_procedure(name, code, is_function)
+        print_success(f"Procédure {'fonction' if is_function else 'procédure'} {name} enregistrée.")
+
+    def execute_procedure(self, name, context, user):
+        if user["role"] != "admin":
+            print_error(LANGUAGES[self.language]["permission_denied"])
+            return
+        try:
+            result = self.procedure_manager.execute_procedure(name, context)
+            print_success(f"Procédure {name} exécutée. Résultat: {result}")
+            return result
+        except Exception as e:
+            print_error(f"Erreur d'exécution de la procédure {name}: {e}")
+
+    def list_procedures(self):
+        return self.procedure_manager.list_procedures()

@@ -40,7 +40,7 @@ LANGUAGES = {
         "training_file_not_found": "Fichier de données d'entraînement non trouvé.",
         "training_in_progress": "Entraînement en cours...",
         "model_trained": "Modèle entraîné et sauvegardé sous {model}",
-        "exit": "exit",
+        "exit": "Fermeture du système de base de données. Au revoir !",
         "ssl_files_notice": "Les fichiers SSL sont chargés depuis le répertoire de main.py.",
         "user_exists": "Utilisateur déjà existant",
         "user_not_found": "Utilisateur non trouvé",
@@ -104,7 +104,13 @@ LANGUAGES = {
         "admin_password": "Mot de passe administrateur : ",
         "critical_error": "Erreur critique : {error}",
         "initialization_failed": "Échec de l'initialisation : {error}",
-        "create_admin_password": "Veuillez créer un mot de passe administrateur :"
+        "create_admin_password": "Veuillez créer un mot de passe administrateur :",
+        "decryption_failed": "Échec du déchiffrement : {error}",
+        "procedure_created": "Procédure {name} enregistrée.",
+        "procedure_executed": "Procédure {name} exécutée. Résultat: {result}",
+        "procedure_not_found": "Procédure {name} non trouvée.",
+        "procedure_error": "Erreur d'exécution de la procédure {name}: {error}",
+        "prompt": "Entrez votre requête SQL ou commande :"
     },
     "en": {
         "welcome": "Welcome, {username}!",
@@ -147,7 +153,7 @@ LANGUAGES = {
         "training_file_not_found": "Training data file not found.",
         "training_in_progress": "Training in progress...",
         "model_trained": "Model trained and saved as {model}",
-        "exit": "exit",
+        "exit": "Exiting the database system. Goodbye!",
         "ssl_files_notice": "SSL files are loaded from the same directory as main.py.",
         "user_exists": "User already exists",
         "user_not_found": "User not found",
@@ -211,6 +217,12 @@ LANGUAGES = {
         "admin_password": "Administrator password: ",
         "critical_error": "Critical error: {error}",
         "initialization_failed": "Initialization failed: {error}",
-        "create_admin_password": "Please create an administrator password:"
+        "create_admin_password": "Enter password for admin user: ",
+        "decryption_failed": "Decryption failed: {error}",
+        "procedure_created": "Procedure {name} saved.",
+        "procedure_executed": "Procedure {name} executed. Result: {result}",
+        "procedure_not_found": "Procedure {name} not found.",
+        "procedure_error": "Error executing procedure {name}: {error}",
+        "prompt": "Enter your SQL or command:"
     }
 }

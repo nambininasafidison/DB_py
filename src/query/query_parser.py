@@ -48,12 +48,25 @@ def execute_query(query, db_system, user, depth=0):
         if not tokens:
             print_error(LANGUAGES[conf.global_language]["error"].format(error="Empty query"))
             return
-        try:
-            command = tokens[0].value.lower()
-        except AttributeError:
-            print_error(LANGUAGES[conf.global_language]["error"].format(error="Invalid query syntax"))
+        command = None
+        for token in tokens:
+            if hasattr(token, 'ttype') and token.ttype is not None and str(token.ttype).startswith('Token.Keyword'):
+                command = token.value.lower()
+                break
+            elif hasattr(token, 'ttype') and token.ttype is not None and str(token.ttype).startswith('Token.DML'):
+                command = token.value.lower()
+                break
+            elif hasattr(token, 'ttype') and token.ttype is not None and str(token.ttype).startswith('Token.DDL'):
+                command = token.value.lower()
+                break
+        if not command:
+            for token in tokens:
+                if hasattr(token, 'value') and token.value.strip():
+                    command = token.value.lower()
+                    break
+        if not command:
+            print_error(LANGUAGES[conf.global_language]["error"].format(error="Invalid query syntax: no command found"))
             return
-
         if command == "use":
             db_name = tokens[1].value if len(tokens) > 1 else None
             if db_name:
@@ -100,11 +113,25 @@ def execute_query(query, db_system, user, depth=0):
                     elif "unique" in constraint_def.lower():
                         constraints["unique_keys"].append(constraint_name)
                     elif "foreign key" in constraint_def.lower():
-                        # Handle foreign key logic here
-                        pass
+                        fk_match = re.search(r'foreign key \(([^)]+)\) references (\w+)\(([^)]+)\)', constraint_def, re.IGNORECASE)
+                        if fk_match:
+                            fk_cols = [c.strip() for c in fk_match.group(1).split(",")]
+                            ref_table = fk_match.group(2)
+                            ref_cols = [c.strip() for c in fk_match.group(3).split(",")]
+                            constraints["foreign_keys"][constraint_name] = {
+                                "columns": fk_cols,
+                                "ref_table": ref_table,
+                                "ref_columns": ref_cols
+                            }
+                        else:
+                            print_error(f"Syntaxe incorrecte pour la contrainte FOREIGN KEY: {constraint_def}")
                     elif "check" in constraint_def.lower():
-                        # Handle check constraint logic here
-                        pass
+                        check_match = re.search(r'check \((.+)\)', constraint_def, re.IGNORECASE)
+                        if check_match:
+                            check_condition = check_match.group(1).strip()
+                            constraints["checks"].append((constraint_name, check_condition))
+                        else:
+                            print_error(f"Syntaxe incorrecte pour la contrainte CHECK: {constraint_def}")
                 else:
                     parts = definition.split()
                     if len(parts) < 2:
@@ -378,7 +405,6 @@ def execute_query(query, db_system, user, depth=0):
             for cte_name, cte_query in cte_definitions:
                 db_system.create_cte(cte_name, cte_query, user)
             execute_query(main_query, db_system, user)
-
         elif command in ["union", "intersect", "except"]:
             queries = query_lower.split(command)
             if len(queries) != 2:
@@ -399,28 +425,24 @@ def execute_query(query, db_system, user, depth=0):
                 print_error("Nom d'utilisateur manquant pour GRANT ALL PRIVILEGES.")
                 return
             db_system.user_manager.grant_all_privileges(username, user)
-
         elif command == "revoke" and "all privileges" in query_lower:
             username = find_token_value(tokens, "from")
             if not username:
                 print_error("Nom d'utilisateur manquant pour REVOKE ALL PRIVILEGES.")
                 return
             db_system.user_manager.revoke_all_privileges(username, user)
-
         elif command == "savepoint":
             savepoint_name = tokens[1].value if len(tokens) > 1 else None
             if not savepoint_name:
                 print_error("Nom de savepoint manquant.")
                 return
             db_system.transaction_manager.create_savepoint(savepoint_name, user)
-
         elif command == "rollback" and "to savepoint" in query_lower:
             savepoint_name = find_token_value(tokens, "savepoint")
             if not savepoint_name:
                 print_error("Nom de savepoint manquant pour ROLLBACK TO SAVEPOINT.")
                 return
             db_system.transaction_manager.rollback_to_savepoint(savepoint_name, user)
-
         elif command == "release" and "savepoint" in query_lower:
             savepoint_name = find_token_value(tokens, "savepoint")
             if not savepoint_name:
@@ -433,111 +455,245 @@ def execute_query(query, db_system, user, depth=0):
             on_condition = find_token_value(tokens, "on")
             when_matched = find_token_value(tokens, "when matched then")
             when_not_matched = find_token_value(tokens, "when not matched then")
-            
             if not (target_table and source_table and on_condition):
-                print_error("Syntax error in MERGE statement.")
+                print_error("Syntax error in MERGE statement. Usage: MERGE INTO ... USING ... ON ...")
                 return
-            
-            db_system.merge_records(target_table, source_table, on_condition, when_matched, when_not_matched, user)
-
+            try:
+                db_system.merge_records(target_table, source_table, on_condition, when_matched, when_not_matched, user)
+                print_success(LANGUAGES[db_system.language]["merge_completed"].format(table=target_table))
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
+        elif command == "select" and "as of" in query_lower:
+            table_name = find_token_value(tokens, "from")
+            timestamp = find_token_value(tokens, "as of")
+            if not (table_name and timestamp):
+                print_error("Syntax error: SELECT ... FROM ... AS OF <timestamp>")
+                return
+            try:
+                result = db_system.time_travel_query(table_name, timestamp, user)
+                print_response(json.dumps(result, indent=2), "info")
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
+        elif command == "alter" and "add data masking" in query_lower:
+            table_name = find_token_value(tokens, "table")
+            column_name = find_token_value(tokens, "add")
+            mask_function = find_token_value(tokens, "using")
+            if not (table_name and column_name and mask_function):
+                print_error("Syntax error: ALTER TABLE ... ADD DATA MASKING ON ... USING ...")
+                return
+            try:
+                db_system.add_data_masking(table_name, column_name, mask_function, user)
+                print_success(LANGUAGES[db_system.language]["data_masking_added"].format(column=column_name, table=table_name))
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
+        elif command == "alter" and "enable row level security" in query_lower:
+            table_name = find_token_value(tokens, "table")
+            if not table_name:
+                print_error("Syntax error: ALTER TABLE ... ENABLE ROW LEVEL SECURITY")
+                return
+            try:
+                db_system.enable_row_level_security(table_name, user)
+                print_success(LANGUAGES[db_system.language]["row_level_security_enabled"].format(table=table_name))
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
         elif command == "select" and "over" in query_lower:
             select_columns = tokens[1].value if len(tokens) > 1 else "*"
             table_name = find_token_value(tokens, "from")
             partition_by_clause = find_token_value(tokens, "partition by")
             order_by_clause = find_token_value(tokens, "order by")
-            
-            result = db_system.query_with_window_function(
-                table_name, select_columns, partition_by_clause, order_by_clause, user
-            )
-            print_response(json.dumps(result, indent=2), "info")
-        elif command == "select" and "json" in query_lower:
-            table_name = find_token_value(tokens, "from")
-            json_column = find_token_value(tokens, "json_extract")
-            json_path = find_token_value(tokens, "path")
-            result = db_system.query_json(table_name, json_column, json_path, user)
-            print_response(json.dumps(result, indent=2), "info")
-
-        elif command == "select" and "array" in query_lower:
-            table_name = find_token_value(tokens, "from")
-            array_column = find_token_value(tokens, "array_agg")
-            result = db_system.query_array(table_name, array_column, user)
-            print_response(json.dumps(result, indent=2), "info")
-
-        elif command == "join" and "full outer" in query_lower:
-            table1 = tokens[1].value if len(tokens) > 1 else None
-            table2 = tokens[3].value if len(tokens) > 3 else None
-            condition = find_token_value(tokens, "on")
-            result = db_system.full_outer_join(table1, table2, condition, user)
-            print_response(json.dumps(result, indent=2), "info")
-        elif command == "select" and "division" in query_lower:
-            table1 = find_token_value(tokens, "from")
-            table2 = find_token_value(tokens, "division")
-            result = db_system.division_operation(table1, table2, user)
-            print_response(json.dumps(result, indent=2), "info")
-
+            if not table_name:
+                print_error("Syntax error: SELECT ... FROM ... OVER ...")
+                return
+            try:
+                result = db_system.query_with_window_function(table_name, select_columns, partition_by_clause, order_by_clause, user)
+                print_response(json.dumps(result, indent=2), "info")
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
         elif command == "select" and "json_table" in query_lower:
             table_name = find_token_value(tokens, "from")
             json_column = find_token_value(tokens, "json_table")
             path = find_token_value(tokens, "path")
             columns = find_token_value(tokens, "columns")
-            result = db_system.json_table(table_name, json_column, path, columns, user)
-            print_response(json.dumps(result, indent=2), "info")
-
-        elif command == "alter" and "add generated" in query_lower:
-            table_name = find_token_value(tokens, "table")
-            column_name = find_token_value(tokens, "add")
-            expression = find_token_value(tokens, "as")
-            db_system.add_generated_column(table_name, column_name, expression, user)
-
+            if not (table_name and json_column and path and columns):
+                print_error("Syntax error: SELECT ... JSON_TABLE(...)")
+                return
+            try:
+                result = db_system.json_table(table_name, json_column, path, columns, user)
+                print_response(json.dumps(result, indent=2), "info")
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["json_table_error"].format(error=str(e)))
         elif command == "with" and "recursive" in query_lower:
             cte_name = find_token_value(tokens, "with")
             anchor_query = find_token_value(tokens, "as")
             recursive_query = find_token_value(tokens, "union all")
             main_query = query_lower.split("select")[-1]
-            result = db_system.recursive_cte(cte_name, anchor_query, recursive_query, main_query, user)
-            print_response(json.dumps(result, indent=2), "info")
+            if not (cte_name and anchor_query and recursive_query and main_query):
+                print_error("Syntax error: WITH RECURSIVE ...")
+                return
+            try:
+                result = db_system.recursive_cte(cte_name, anchor_query, recursive_query, main_query, user)
+                print_response(json.dumps(result, indent=2), "info")
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["recursive_cte_completed"].format(cte_name=cte_name))
+        elif command == "savepoint":
+            savepoint_name = tokens[1].value if len(tokens) > 1 else None
+            if not savepoint_name:
+                print_error("Nom de savepoint manquant.")
+                return
+            try:
+                db_system.transaction_manager.create_savepoint(savepoint_name, user)
+                print_success(LANGUAGES[db_system.language]["savepoint_created"].format(savepoint_name=savepoint_name))
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
+        elif command == "rollback" and "to savepoint" in query_lower:
+            savepoint_name = find_token_value(tokens, "savepoint")
+            if not savepoint_name:
+                print_error("Nom de savepoint manquant pour ROLLBACK TO SAVEPOINT.")
+                return
+            try:
+                db_system.transaction_manager.rollback_to_savepoint(savepoint_name, user)
+                print_success(LANGUAGES[db_system.language]["savepoint_rolled_back"].format(savepoint_name=savepoint_name))
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
+        elif command == "release" and "savepoint" in query_lower:
+            savepoint_name = find_token_value(tokens, "savepoint")
+            if not savepoint_name:
+                print_error("Nom de savepoint manquant pour RELEASE SAVEPOINT.")
+                return
+            try:
+                db_system.transaction_manager.release_savepoint(savepoint_name, user)
+                print_success(LANGUAGES[db_system.language]["savepoint_released"].format(savepoint_name=savepoint_name))
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
+        elif command == "join" and "full outer" in query_lower:
+            table1 = tokens[1].value if len(tokens) > 1 else None
+            table2 = tokens[3].value if len(tokens) > 3 else None
+            condition = find_token_value(tokens, "on")
+            if not (table1 and table2 and condition):
+                print_error("Syntax error: JOIN ... FULL OUTER ... ON ...")
+                return
+            try:
+                result = db_system.full_outer_join(table1, table2, condition, user)
+                print_response(json.dumps(result, indent=2), "info")
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
+        elif command == "select" and "division" in query_lower:
+            table1 = find_token_value(tokens, "from")
+            table2 = find_token_value(tokens, "division")
+            if not (table1 and table2):
+                print_error("Syntax error: SELECT ... FROM ... DIVISION ...")
+                return
+            try:
+                result = db_system.division_operation(table1, table2, user)
+                print_response(json.dumps(result, indent=2), "info")
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
+        elif command == "select" and "/*+" in query_lower:
+            hints = re.findall(r'/\*\+(.+?)\*/', query)
+            query_without_hints = re.sub(r'/\*\+.+?\*/', '', query)
+            try:
+                result = db_system.execute_with_hints(query_without_hints, hints, user)
+                print_response(json.dumps(result, indent=2), "info")
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
+        elif command == "create" and "enum" in query_lower:
+            enum_name = find_token_value(tokens, "enum")
+            values = find_token_value(tokens, "values")
+            if not (enum_name and values):
+                print_error("Syntax error: CREATE ENUM ... VALUES ...")
+                return
+            try:
+                db_system.create_enum(enum_name, values, user)
+                print_success(LANGUAGES[db_system.language]["enum_created"].format(enum=enum_name))
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
         elif command == "create" and "sequence" in query_lower:
             sequence_name = find_token_value(tokens, "sequence")
             start_value = find_token_value(tokens, "start with")
             increment_by = find_token_value(tokens, "increment by")
-            db_system.create_sequence(sequence_name, start_value, increment_by, user)
-
-        elif command == "create" and "enum" in query_lower:
-            enum_name = find_token_value(tokens, "enum")
-            values = find_token_value(tokens, "values")
-            db_system.create_enum(enum_name, values, user)
-
+            if not sequence_name:
+                print_error("Syntax error: CREATE SEQUENCE ...")
+                return
+            try:
+                db_system.create_sequence(sequence_name, start_value, increment_by, user)
+                print_success(LANGUAGES[db_system.language]["sequence_created"].format(sequence=sequence_name))
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
         elif command == "create" and "foreign data wrapper" in query_lower:
             fdw_name = find_token_value(tokens, "foreign data wrapper")
             handler = find_token_value(tokens, "handler")
             validator = find_token_value(tokens, "validator")
-            db_system.create_foreign_data_wrapper(fdw_name, handler, validator, user)
-
+            if not (fdw_name and handler and validator):
+                print_error("Syntax error: CREATE FOREIGN DATA WRAPPER ... HANDLER ... VALIDATOR ...")
+                return
+            try:
+                db_system.create_foreign_data_wrapper(fdw_name, handler, validator, user)
+                print_success(LANGUAGES[db_system.language]["fdw_created"].format(fdw=fdw_name))
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
         elif command == "create" and "tablespace" in query_lower:
             tablespace_name = find_token_value(tokens, "tablespace")
             location = find_token_value(tokens, "location")
-            db_system.create_tablespace(tablespace_name, location, user)
-        elif command == "select" and "time travel" in query_lower:
-            table_name = find_token_value(tokens, "from")
-            timestamp = find_token_value(tokens, "as of")
-            result = db_system.time_travel_query(table_name, timestamp, user)
-            print_response(json.dumps(result, indent=2), "info")
-
-        elif command == "alter" and "add data masking" in query_lower:
+            if not (tablespace_name and location):
+                print_error("Syntax error: CREATE TABLESPACE ... LOCATION ...")
+                return
+            try:
+                db_system.create_tablespace(tablespace_name, location, user)
+                print_success(LANGUAGES[db_system.language]["tablespace_created"].format(tablespace=tablespace_name))
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
+        elif command == "begin":
+            try:
+                db_system.transaction_manager.begin(user)
+                print_success(LANGUAGES[db_system.language]["nested_transaction_started"])
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
+        elif command == "commit":
+            try:
+                db_system.transaction_manager.commit(user)
+                print_success(LANGUAGES[db_system.language]["nested_transaction_committed"])
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
+        elif command == "rollback":
+            try:
+                db_system.transaction_manager.rollback(user)
+                print_success(LANGUAGES[db_system.language]["nested_transaction_rolled_back"])
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
+        elif command == "create" and "materialized view" in query_lower:
+            view_name = find_token_value(tokens, "view")
+            select_query = query[query.lower().index("as")+2:].strip()
+            try:
+                db_system.create_materialized_view(view_name, select_query, user)
+                print_success(LANGUAGES[db_system.language]["materialized_view_created"].format(view_name=view_name))
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
+        elif command == "refresh" and "materialized view" in query_lower:
+            view_name = find_token_value(tokens, "view")
+            try:
+                db_system.refresh_materialized_view(view_name, user)
+                print_success(LANGUAGES[db_system.language]["materialized_view_refreshed"].format(view_name=view_name))
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
+        elif command == "shard" and "table" in query_lower:
             table_name = find_token_value(tokens, "table")
-            column_name = find_token_value(tokens, "add")
-            mask_function = find_token_value(tokens, "using")
-            db_system.add_data_masking(table_name, column_name, mask_function, user)
-
-        elif command == "alter" and "enable row level security" in query_lower:
-            table_name = find_token_value(tokens, "table")
-            db_system.enable_row_level_security(table_name, user)
-
-        elif command == "select" and "/*+" in query_lower:
-            hints = re.findall(r'/\*\+(.+?)\*/', query)
-            query_without_hints = re.sub(r'/\*\+.+?\*/', '', query)
-            result = db_system.execute_with_hints(query_without_hints, hints, user)
-            print_response(json.dumps(result, indent=2), "info")
+            shard_column = find_token_value(tokens, "by")
+            num_shards = int(find_token_value(tokens, "en"))
+            try:
+                db_system.shard_table(table_name, shard_column, num_shards, user)
+                print_success(LANGUAGES[db_system.language]["table_sharded"].format(table=table_name, num_shards=num_shards, shard_column=shard_column))
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
+        elif command == "create" and "secondary index" in query_lower:
+            idx_name = find_token_value(tokens, "index")
+            table_name = find_token_value(tokens, "on")
+            columns_str = query[query.index("(")+1:query.index(")")]
+            columns = [c.strip() for c in columns_str.split(",")]
+            try:
+                db_system.create_secondary_index(idx_name, table_name, columns, user)
+                print_success(LANGUAGES[db_system.language]["index_created"].format(index_type="SECONDARY", table=table_name, column=",".join(columns)))
+            except Exception as e:
+                print_error(LANGUAGES[db_system.language]["query_failed"].format(error=str(e)))
         else:
             print_error(LANGUAGES[db_system.language]["command_not_supported"])
     except Exception as e:

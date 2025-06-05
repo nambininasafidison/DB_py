@@ -1,4 +1,5 @@
 import os
+from config.language import LANGUAGES  # Ajout de l'import LANGUAGES
 
 MASTER_CONFIG_FILE = "data_dir.cfg"
 MASTER_KEY_FILE = "master.key"
