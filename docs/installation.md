@@ -1,3 +1,5 @@
+# Revenir au sommaire ← [Sommaire](./index.md)
+
 # Installation
 
 ## Prérequis

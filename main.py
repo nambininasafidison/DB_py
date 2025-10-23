@@ -48,7 +48,6 @@ def main():
                 if created_admin:
                     user = db_system.user_manager.authenticate("admin", admin_pass)
                 else:
-                    # Demander le mot de passe admin si l'utilisateur admin existe déjà
                     admin_pass = getpass.getpass(LANGUAGES[conf.global_language]["admin_password"])
                     user = db_system.user_manager.authenticate("admin", admin_pass)
                 if user:

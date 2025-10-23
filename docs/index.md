@@ -26,3 +26,9 @@ Cette documentation détaille l’installation, l’utilisation, la configuratio
 - [Installation](./installation.md)
 - [Utilisation](./usage.md)
 - [Configuration avancée](./configuration.md)
+
+## Autres ressources
+
+- [Architecture technique](./architecture.md)
+- [Contribution](./contribution.md)
+- [Feuille de route](./roadmap.md)
