@@ -1,5 +1,3 @@
-# Revenir au sommaire ← [Sommaire](./index.md)
-
 # Feuille de Route
 
 ## Fonctionnalités prévues
@@ -25,3 +23,7 @@
 1. Stabilité des transactions ACID.
 2. Performance des requêtes complexes.
 3. Documentation exhaustive et exemples pratiques.
+
+---
+
+[← Sommaire](./index.md)

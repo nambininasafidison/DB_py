@@ -1,4 +1,3 @@
-# Revenir au sommaire ← [Sommaire](./index.md)
 
 # Configuration Avancée
 
@@ -39,3 +38,7 @@ SMTP_PORT = 587
 SMTP_USER = "votre_email@gmail.com"
 SMTP_PASSWORD = "votre_mot_de_passe"
 ```
+
+---
+
+[← Sommaire](./index.md)

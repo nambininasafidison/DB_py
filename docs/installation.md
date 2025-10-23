@@ -1,5 +1,3 @@
-# Revenir au sommaire ← [Sommaire](./index.md)
-
 # Installation
 
 ## Prérequis
@@ -36,3 +34,7 @@ Pour activer des fonctionnalités comme `TIME TRAVEL`, `DATA MASKING`, et `ROW L
 - **Redis** : Pour le cache distribué.
 - **Numba** : Pour l’optimisation parallèle.
 - **TensorFlow** : Pour le parsing NLP des requêtes.
+
+---
+
+[← Sommaire](./index.md)

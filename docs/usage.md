@@ -1,5 +1,3 @@
-# Revenir au sommaire ← [Sommaire](./index.md)
-
 # Manuel d’Utilisation
 
 ## Démarrage
@@ -475,7 +473,8 @@ La requête est traduite automatiquement en SQL et exécutée.
 
 - Entraînez le modèle avec `TRAIN NLP MODEL` pour améliorer la compréhension.
 - Le NLP fonctionne pour les requêtes simples et courantes.
+  Pour chaque fonctionnalité avancée, consultez la documentation technique pour les limitations, les options de configuration et les exemples d’erreurs courantes.
 
 ---
 
-Pour chaque fonctionnalité avancée, consultez la documentation technique pour les limitations, les options de configuration et les exemples d’erreurs courantes.
+[← Sommaire](./index.md)

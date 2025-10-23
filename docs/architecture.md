@@ -1,5 +1,3 @@
-# Revenir au sommaire ← [Sommaire](./index.md)
-
 # Architecture Technique
 
 ## Aperçu
@@ -139,3 +137,7 @@ graph TD
     C --> F(Replication)
     E --> G(Redis)
 ```
+
+---
+
+[← Sommaire](./index.md)
