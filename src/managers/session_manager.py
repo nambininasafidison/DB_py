@@ -13,7 +13,10 @@ class SessionManager:
         token = uuid.uuid4().hex
         expiry = time.time() + 3600
         self.sessions[token] = {"username": username, "expiry": expiry}
-        print_success(LANGUAGES[conf.global_language]["session_started"].format(token=token))
+        try:
+            print_success(LANGUAGES[conf.global_language]["session_started"].format(token=""))
+        except Exception:
+            print_success("Session started")
         return token
 
     def validate_session(self, token):

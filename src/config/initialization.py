@@ -1,7 +1,5 @@
 import os
 import base64
-from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing.text import tokenizer_from_json
 from config.config import MASTER_CONFIG_FILE
 from core.cache import RedisCache
 from core.database_system import DatabaseSystem
@@ -15,6 +13,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.fernet import InvalidToken
 import config.config as conf
 
+_TF_AVAILABLE = False
 DATA_KEY_SALT = "data_key_salt"
 METADATA_KEY_SALT = "metadata_key_salt"
 USER_KEY_SALT = "user_key_salt"
@@ -76,6 +75,10 @@ def initialize_system():
         "HISTORY_FILE": os.path.join(data_dir, "history"),
         "TOKENIZER": os.path.join(data_dir, "tokenizer.json"),
         "SQL_MAPPING": os.path.join(data_dir, "sql_mapping.json"),
+        # Optional pre-trained NLP model path. Users can train a model externally and place
+        # the model file here (or set CONFIG['NLP_MODEL'] manually) and the system will
+        # attempt to load it during initialization.
+        "NLP_MODEL": os.path.join(data_dir, "nlp_model.h5"),
         "DATA_DIR": data_dir
     })
 
@@ -89,6 +92,32 @@ def initialize_system():
         replicator = Replicator([], conf.SSL_CERT, conf.SSL_KEY)
         user_manager = UserManager(user_key)
         db_system = DatabaseSystem(key, metadata_key, replicator, cache, user_manager, language=conf.global_language)
+        # If developer trained a model externally into ./train_output, copy artifacts
+        # into the DATA_DIR (which is encrypted/managed by the system) so the loader
+        # can pick them up.
+        try:
+            repo_train_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', 'train_output')
+            repo_train_dir = os.path.normpath(repo_train_dir)
+            if os.path.exists(repo_train_dir):
+                for fname in ("nlp_model.h5", "tokenizer.json", "sql_mapping.json", "nlp_examples.json"):
+                    src = os.path.join(repo_train_dir, fname)
+                    if os.path.exists(src):
+                        dst = os.path.join(conf.CONFIG["DATA_DIR"], fname)
+                        try:
+                            with open(src, 'rb') as fsrc, open(dst, 'wb') as fdst:
+                                fdst.write(fsrc.read())
+                        except Exception:
+                            # non-fatal, continue copying other files
+                            pass
+        except Exception:
+            pass
+
+        # Try to load a pre-trained NLP model/tokenizer if present
+        try:
+            nlp_model.load()
+        except Exception:
+            # non-fatal: NLP will remain disabled if load fails
+            pass
         return db_system
     except Exception as e:
         print_error(f"Erreur lors de l'initialisation du système: {str(e)}")

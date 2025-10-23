@@ -31,17 +31,32 @@ def execute_query(query, db_system, user, depth=0):
         sql_keywords = [
             "use", "create", "insert", "select", "update", "alter", "drop",
             "truncate", "describe", "show", "grant", "revoke", "create index",
-            "backup", "restore", "set", "train", "with", "union", "intersect", "except"
+            "backup", "restore", "set", "train", "with", "union", "intersect", "except", "exit"
         ]
 
-        if not any(query_lower.startswith(cmd) for cmd in sql_keywords):
-            if nlp_model.model:
-                sql_query = nlp_model.process(query)
-                print_response(LANGUAGES[conf.global_language]["translated_query"].format(sql_query=sql_query), "info")
-                execute_query(sql_query, db_system, user, depth + 1)
-            else:
-                print_error(LANGUAGES[conf.global_language]["nlp_model_not_trained"])
-            return
+        try:
+            import re as _re
+            pattern = r"^\s*(?:" + _re.escape(sql_keywords[0])
+            for k in sql_keywords[1:]:
+                pattern += r"|" + _re.escape(k)
+            pattern += r")\b"
+            if not _re.match(pattern, query_lower):
+                if nlp_model.model:
+                    sql_query = nlp_model.process(query)
+                    print_response(LANGUAGES[conf.global_language]["translated_query"].format(sql_query=sql_query), "info")
+                    execute_query(sql_query, db_system, user, depth + 1)
+                else:
+                    print_error(LANGUAGES[conf.global_language]["nlp_model_not_trained"])
+                return
+        except Exception:
+            if not any(query_lower.startswith(cmd) for cmd in sql_keywords):
+                if nlp_model.model:
+                    sql_query = nlp_model.process(query)
+                    print_response(LANGUAGES[conf.global_language]["translated_query"].format(sql_query=sql_query), "info")
+                    execute_query(sql_query, db_system, user, depth + 1)
+                else:
+                    print_error(LANGUAGES[conf.global_language]["nlp_model_not_trained"])
+                return
         
         tokens = clean_tokens(query)
 
