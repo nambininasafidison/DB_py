@@ -789,12 +789,10 @@ class DatabaseSystem:
         print_success(f"Row-level security enabled for table {table_name}.")
 
     def execute_with_hints(self, query, hints, user):
-        # Example: Apply hints like "USE INDEX", "PARALLEL", etc.
         if "USE INDEX" in hints:
             print_warning("Hint: Using index for query optimization.")
         if "PARALLEL" in hints:
             print_warning("Hint: Executing query in parallel mode.")
-        # Execute the query normally
         return self.query_raw(query, user)
 
     def query(self, table_name, conditions=None, user=None):

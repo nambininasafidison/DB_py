@@ -456,7 +456,7 @@ SELECT /*+ USE INDEX */ * FROM users WHERE email = 'a@b.com';
 **Résultat attendu :**
 L’index est utilisé pour accélérer la requête.
 
-#### 9. NLP et requêtes en langage naturel
+<!-- #### 9. NLP et requêtes en langage naturel
 
 Le SGBDR peut interpréter des requêtes en français ou anglais grâce au modèle NLP intégré.
 
@@ -475,6 +475,6 @@ La requête est traduite automatiquement en SQL et exécutée.
 - Le NLP fonctionne pour les requêtes simples et courantes.
   Pour chaque fonctionnalité avancée, consultez la documentation technique pour les limitations, les options de configuration et les exemples d’erreurs courantes.
 
----
+--- -->
 
 [← Sommaire](./index.md)

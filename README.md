@@ -30,9 +30,10 @@ Installez les bibliothèques requises avec :
 pip install -r requirements.txt
 ```
 
+<!--
 ## Entraînement du module NLP
 
-Le module NLP du SGBDR permet de convertir automatiquement des requêtes en langage naturel en requêtes SQL.  
+Le module NLP du SGBDR permet de convertir automatiquement des requêtes en langage naturel en requêtes SQL.
 L’entraînement du modèle s’effectue en dehors du serveur principal, afin de ne pas alourdir le processus avec TensorFlow.
 
 ### Étapes d’entraînement
@@ -50,10 +51,10 @@ L’entraînement du modèle s’effectue en dehors du serveur principal, afin d
    mkdir -p ./data
    cp ./data_nlp/nlp_model.h5 ./data/tokenizer.json ./data/sql_mapping.json ./data/
    ```
-4. Au démarrage, le SGBDR chargera automatiquement le modèle si ces fichiers sont présents  
+4. Au démarrage, le SGBDR chargera automatiquement le modèle si ces fichiers sont présents
    (voir `src/config/initialization.py` et `src/query/nlp_model.py`).
 
-> **Remarque :** le script d’entraînement et le chargement du modèle utilisent TensorFlow.  
+> **Remarque :** le script d’entraînement et le chargement du modèle utilisent TensorFlow.
 > Vous pouvez effectuer cette étape dans un environnement isolé (par exemple un conteneur Docker), puis simplement copier les artefacts nécessaires dans le répertoire de données du serveur.
 
 ---
@@ -70,10 +71,10 @@ Pour les environnements où TensorFlow n’est pas souhaité en production, le S
   - exploite `nlp_examples.json` pour calculer la proximité avec les exemples connus,
   - et renvoie la requête SQL correspondante à l’exemple le plus pertinent.
 
-Ce mode ne nécessite que `numpy` et le tokenizer — aucun chargement de modèle Keras.  
+Ce mode ne nécessite que `numpy` et le tokenizer — aucun chargement de modèle Keras.
 Il constitue une solution simple et rapide, adaptée aux jeux de requêtes courantes déjà couverts par le dataset d’entraînement.
 
----
+--- -->
 
 ## Documentation
 
